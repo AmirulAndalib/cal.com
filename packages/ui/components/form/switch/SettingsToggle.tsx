@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 import { classNames } from "@calcom/lib";
 
-import { Label } from "..";
+import { Label } from "../inputs/Label";
 import Switch from "./Switch";
 
 type Props = {
@@ -22,6 +22,7 @@ type Props = {
   switchContainerClassName?: string;
   labelClassName?: string;
   descriptionClassName?: string;
+  noIndentation?: boolean;
 };
 
 function SettingsToggle({
@@ -39,6 +40,7 @@ function SettingsToggle({
   switchContainerClassName,
   labelClassName,
   descriptionClassName,
+  noIndentation = false,
   ...rest
 }: Props) {
   const [animateRef] = useAutoAnimate<HTMLDivElement>();
@@ -57,7 +59,8 @@ function SettingsToggle({
               <div>
                 <div className="flex items-center gap-x-2" data-testid={`${rest["data-testid"]}-title`}>
                   <Label
-                    className={classNames("mt-0.5 text-base font-semibold leading-none", labelClassName)}>
+                    className={classNames("mt-0.5 text-base font-semibold leading-none", labelClassName)}
+                    htmlFor="">
                     {title}
                     {LockedIcon}
                   </Label>
@@ -107,7 +110,7 @@ function SettingsToggle({
             </div>
           )}
           {children && (
-            <div className={classNames("lg:ml-14", childrenClassName)} ref={animateRef}>
+            <div className={classNames(noIndentation ? "" : "lg:ml-14", childrenClassName)} ref={animateRef}>
               {checked && <div className={classNames(!toggleSwitchAtTheEnd && "mt-4")}>{children}</div>}
             </div>
           )}

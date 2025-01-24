@@ -1,12 +1,11 @@
 import type { Prisma } from "@prisma/client";
-import { v4 as uuidv4 } from "uuid";
 
 import { IS_TEAM_BILLING_ENABLED } from "@calcom/lib/constants";
 import { getMetadataHelpers } from "@calcom/lib/getMetadataHelpers";
+import { uploadLogo } from "@calcom/lib/server/avatar";
 import { isOrganisationAdmin } from "@calcom/lib/server/queries/organisations";
 import { resizeBase64Image } from "@calcom/lib/server/resizeBase64Image";
-import { uploadLogo } from "@calcom/lib/server/uploadLogo";
-import { closeComUpdateTeam } from "@calcom/lib/sync/SyncServiceManager";
+import type { PrismaClient } from "@calcom/prisma";
 import { prisma } from "@calcom/prisma";
 import { UserPermissionRole } from "@calcom/prisma/enums";
 import { teamMetadataSchema } from "@calcom/prisma/zod-utils";
@@ -23,28 +22,83 @@ type UpdateOptions = {
   input: TUpdateInputSchema;
 };
 
-const uploadBanner = async ({ teamId, banner: data }: { teamId: number; banner: string }) => {
-  const objectKey = uuidv4();
+const updateOrganizationSettings = async ({
+  organizationId,
+  input,
+  tx,
+}: {
+  organizationId: number;
+  input: TUpdateInputSchema;
+  tx: Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
+}) => {
+  const data: Prisma.OrganizationSettingsUpdateInput = {};
 
-  await prisma.avatar.upsert({
+  if (input.hasOwnProperty("lockEventTypeCreation")) {
+    data.lockEventTypeCreationForUsers = input.lockEventTypeCreation;
+  }
+
+  if (input.hasOwnProperty("adminGetsNoSlotsNotification")) {
+    data.adminGetsNoSlotsNotification = input.adminGetsNoSlotsNotification;
+  }
+
+  if (input.hasOwnProperty("allowSEOIndexing")) {
+    data.allowSEOIndexing = input.allowSEOIndexing;
+  }
+
+  if (input.hasOwnProperty("orgProfileRedirectsToVerifiedDomain")) {
+    data.orgProfileRedirectsToVerifiedDomain = input.orgProfileRedirectsToVerifiedDomain;
+  }
+
+  // If no settings values have changed lets skip this update
+  if (Object.keys(data).length === 0) return;
+
+  await tx.organizationSettings.update({
     where: {
-      teamId_userId: {
-        teamId,
-        userId: 0,
-      },
+      organizationId,
     },
-    create: {
-      teamId: teamId,
-      data,
-      objectKey,
-    },
-    update: {
-      data,
-      objectKey,
-    },
+    data,
   });
 
-  return `/api/avatar/${objectKey}.png`;
+  if (input.lockEventTypeCreation) {
+    switch (input.lockEventTypeCreationOptions) {
+      case "HIDE":
+        await tx.eventType.updateMany({
+          where: {
+            teamId: null, // Not assigned to a team
+            parentId: null, // Not a managed event type
+            owner: {
+              profiles: {
+                some: {
+                  organizationId,
+                },
+              },
+            },
+          },
+          data: {
+            hidden: true,
+          },
+        });
+
+        break;
+      case "DELETE":
+        await tx.eventType.deleteMany({
+          where: {
+            teamId: null, // Not assigned to a team
+            parentId: null, // Not a managed event type
+            owner: {
+              profiles: {
+                some: {
+                  organizationId,
+                },
+              },
+            },
+          },
+        });
+        break;
+      default:
+        break;
+    }
+  }
 };
 
 export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
@@ -85,20 +139,10 @@ export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
 
   if (!prevOrganisation) throw new TRPCError({ code: "NOT_FOUND", message: "Organisation not found." });
 
-  let bannerUrl = prevOrganisation.bannerUrl;
-  if (input.banner && input.banner.startsWith("data:image/png;base64,")) {
-    const banner = await resizeBase64Image(input.banner, { maxSize: 1500 });
-    bannerUrl = await uploadBanner({
-      banner: banner,
-      teamId: currentOrgId,
-    });
-  } else if (input.banner === "") {
-    bannerUrl = null;
-  }
-
-  const { mergeMetadata } = getMetadataHelpers(teamMetadataSchema.unwrap(), prevOrganisation.metadata);
+  const { mergeMetadata } = getMetadataHelpers(teamMetadataSchema.unwrap(), prevOrganisation.metadata ?? {});
 
   const data: Prisma.TeamUpdateArgs["data"] = {
+    logoUrl: input.logoUrl,
     name: input.name,
     calVideoLogo: input.calVideoLogo,
     bio: input.bio,
@@ -111,17 +155,24 @@ export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
     weekStart: input.weekStart,
     timeFormat: input.timeFormat,
     metadata: mergeMetadata({ ...input.metadata }),
-    bannerUrl,
   };
 
-  if (input.logo && input.logo.startsWith("data:image/png;base64,")) {
-    data.logo = input.logo;
+  if (input.banner && input.banner.startsWith("data:image/png;base64,")) {
+    const banner = await resizeBase64Image(input.banner, { maxSize: 1500 });
+    data.bannerUrl = await uploadLogo({
+      logo: banner,
+      teamId: currentOrgId,
+      isBanner: true,
+    });
+  } else {
+    data.bannerUrl = null;
+  }
+
+  if (input.logoUrl && input.logoUrl.startsWith("data:image/png;base64,")) {
     data.logoUrl = await uploadLogo({
-      logo: input.logo,
+      logo: await resizeBase64Image(input.logoUrl),
       teamId: currentOrgId,
     });
-  } else if (typeof input.logo !== "undefined" && !input.logo) {
-    data.logo = data.logoUrl = null;
   }
 
   if (input.slug) {
@@ -142,15 +193,18 @@ export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
     }
   }
 
-  const updatedOrganisation = await prisma.team.update({
-    where: { id: currentOrgId },
-    data,
+  const updatedOrganisation = await prisma.$transaction(async (tx) => {
+    const updatedOrganisation = await tx.team.update({
+      where: { id: currentOrgId },
+      data,
+    });
+
+    await updateOrganizationSettings({ tx, input, organizationId: currentOrgId });
+
+    return updatedOrganisation;
   });
 
-  // Sync Services: Close.com
-  if (prevOrganisation) closeComUpdateTeam(prevOrganisation, updatedOrganisation);
-
-  return { update: true, userId: ctx.user.id, data };
+  return { update: true, userId: ctx.user.id, data: updatedOrganisation };
 };
 
 export default updateHandler;

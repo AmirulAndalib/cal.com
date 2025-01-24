@@ -1,4 +1,3 @@
-import type { FormValues } from "@pages/settings/my-account/profile";
 import { useState } from "react";
 import type { UseFormReturn } from "react-hook-form";
 
@@ -14,7 +13,8 @@ import {
   Button,
   InputError,
 } from "@calcom/ui";
-import { MoreHorizontal, Flag, Trash, Send } from "@calcom/ui/components/icon";
+
+import type { FormValues } from "~/settings/my-account/profile-view";
 
 type CustomEmailTextFieldProps = {
   formMethods: UseFormReturn<FormValues>;
@@ -45,7 +45,7 @@ const CustomEmailTextField = ({
   return (
     <>
       <div
-        className={`border-default mt-2 flex items-center rounded-md border ${
+        className={`border-default mt-2 flex w-full items-center rounded-md border ${
           inputFocus ? "ring-brand-default border-neutral-300 ring-2" : ""
         }`}>
         <TextField
@@ -71,7 +71,7 @@ const CustomEmailTextField = ({
           <Dropdown>
             <DropdownMenuTrigger asChild>
               <Button
-                StartIcon={MoreHorizontal}
+                StartIcon="ellipsis"
                 variant="icon"
                 size="sm"
                 color="secondary"
@@ -82,7 +82,7 @@ const CustomEmailTextField = ({
             <DropdownMenuContent>
               <DropdownMenuItem>
                 <DropdownItem
-                  StartIcon={Flag}
+                  StartIcon="flag"
                   color="secondary"
                   className="disabled:opacity-40"
                   onClick={handleChangePrimary}
@@ -94,7 +94,7 @@ const CustomEmailTextField = ({
               {!emailVerified && (
                 <DropdownMenuItem>
                   <DropdownItem
-                    StartIcon={Send}
+                    StartIcon="send"
                     color="secondary"
                     className="disabled:opacity-40"
                     onClick={handleVerifyEmail}
@@ -106,7 +106,7 @@ const CustomEmailTextField = ({
               )}
               <DropdownMenuItem>
                 <DropdownItem
-                  StartIcon={Trash}
+                  StartIcon="trash"
                   color="destructive"
                   className="disabled:opacity-40"
                   onClick={handleItemDelete}

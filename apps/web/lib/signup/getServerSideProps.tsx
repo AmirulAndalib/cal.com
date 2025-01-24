@@ -6,26 +6,29 @@ import { checkPremiumUsername } from "@calcom/features/ee/common/lib/checkPremiu
 import { isSAMLLoginEnabled } from "@calcom/features/ee/sso/lib/saml";
 import { getFeatureFlag } from "@calcom/features/flags/server/utils";
 import { IS_SELF_HOSTED, WEBAPP_URL } from "@calcom/lib/constants";
+import { emailSchema } from "@calcom/lib/emailSchema";
 import slugify from "@calcom/lib/slugify";
 import { teamMetadataSchema } from "@calcom/prisma/zod-utils";
 
 import { IS_GOOGLE_LOGIN_ENABLED } from "@server/lib/constants";
 import { ssrInit } from "@server/lib/ssr";
 
-const checkValidEmail = (email: string) => z.string().email().safeParse(email).success;
+const checkValidEmail = (email: string) => emailSchema.safeParse(email).success;
 
 const querySchema = z.object({
   username: z
     .string()
     .optional()
     .transform((val) => val || ""),
-  email: z.string().email().optional(),
+  email: emailSchema.optional(),
 });
 
 export const getServerSideProps = async (ctx: GetServerSidePropsContext) => {
   const prisma = await import("@calcom/prisma").then((mod) => mod.default);
+  const emailVerificationEnabled = await getFeatureFlag(prisma, "email-verification");
+  await ssrInit(ctx);
   const signupDisabled = await getFeatureFlag(prisma, "disable-signup");
-  const ssr = await ssrInit(ctx);
+
   const token = z.string().optional().parse(ctx.query.token);
   const redirectUrlData = z
     .string()
@@ -42,8 +45,8 @@ export const getServerSideProps = async (ctx: GetServerSidePropsContext) => {
     redirectUrl,
     isGoogleLoginEnabled: IS_GOOGLE_LOGIN_ENABLED,
     isSAMLLoginEnabled,
-    trpcState: ssr.dehydrate(),
     prepopulateFormValues: undefined,
+    emailVerificationEnabled,
   };
 
   // username + email prepopulated from query params
@@ -51,7 +54,10 @@ export const getServerSideProps = async (ctx: GetServerSidePropsContext) => {
 
   if ((process.env.NEXT_PUBLIC_DISABLE_SIGNUP === "true" && !token) || signupDisabled) {
     return {
-      notFound: true,
+      redirect: {
+        permanent: false,
+        destination: `/auth/error?error=Signup is disabled in this instance`,
+      },
     } as const;
   }
 
@@ -96,7 +102,10 @@ export const getServerSideProps = async (ctx: GetServerSidePropsContext) => {
 
   if (!verificationToken || verificationToken.expires < new Date()) {
     return {
-      notFound: true,
+      redirect: {
+        permanent: false,
+        destination: `/auth/error?error=Verification Token is missing or has expired`,
+      },
     } as const;
   }
 

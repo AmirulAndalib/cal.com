@@ -5,10 +5,8 @@ import type { UseCalendarsReturnType } from "@calcom/features/bookings/Booker/co
 import type { UseSlotsReturnType } from "@calcom/features/bookings/Booker/components/hooks/useSlots";
 import type { UseVerifyCodeReturnType } from "@calcom/features/bookings/Booker/components/hooks/useVerifyCode";
 import type { UseVerifyEmailReturnType } from "@calcom/features/bookings/Booker/components/hooks/useVerifyEmail";
-import type {
-  useEventReturnType,
-  useScheduleForEventReturnType,
-} from "@calcom/features/bookings/Booker/utils/event";
+import type { useScheduleForEventReturnType } from "@calcom/features/bookings/Booker/utils/event";
+import type { BookerEventQuery } from "@calcom/features/bookings/types";
 import type { BookerLayouts } from "@calcom/prisma/zod-utils";
 
 import type { GetBookingType } from "../lib/get-booking";
@@ -18,14 +16,23 @@ export interface BookerProps {
   username: string;
   orgBannerUrl?: string | null;
 
+  /*
+    all custom classnames related to booker styling go here
+  */
+  customClassNames?: CustomClassNames;
+
   /**
    * Whether is a team or org, we gather basic info from both
    */
   entity: {
+    fromRedirectOfNonOrgLink?: boolean;
+    considerUnpublished: boolean;
     isUnpublished?: boolean;
     orgSlug?: string | null;
     teamSlug?: string | null;
     name?: string | null;
+    logoUrl?: string | null;
+    eventTypeId?: number | null;
   };
 
   /**
@@ -45,11 +52,6 @@ export interface BookerProps {
   selectedDate?: Date;
 
   hideBranding?: boolean;
-  /**
-   * Sets the Booker component to the away state.
-   * This is NOT revalidated by calling the API.
-   */
-  isAway?: boolean;
   /**
    * If false and the current username indicates a dynamic booking,
    * the Booker will immediately show an error.
@@ -85,11 +87,18 @@ export interface BookerProps {
    */
   hashedLink?: string | null;
   isInstantMeeting?: boolean;
+  teamMemberEmail?: string | null;
+  crmOwnerRecordType?: string | null;
+  crmAppSlug?: string | null;
+  areInstantMeetingParametersSet?: boolean | null;
+  userLocale?: string | null;
+  hasValidLicense?: boolean;
 }
 
-export type WrappedBookerProps = {
+export type WrappedBookerPropsMain = {
   sessionUsername?: string | null;
   rescheduleUid: string | null;
+  rescheduledBy: string | null;
   bookingUid: string | null;
   isRedirect: boolean;
   fromUserNameRedirected: string;
@@ -103,14 +112,52 @@ export type WrappedBookerProps = {
   bookings: UseBookingsReturnType;
   slots: UseSlotsReturnType;
   calendars: UseCalendarsReturnType;
-  verifyEmail: UseVerifyEmailReturnType;
   bookerForm: UseBookingFormReturnType;
-  event: useEventReturnType;
+  event: BookerEventQuery;
   schedule: useScheduleForEventReturnType;
   bookerLayout: UseBookerLayoutType;
+  verifyEmail: UseVerifyEmailReturnType;
+  customClassNames?: CustomClassNames;
+  renderCaptcha?: boolean;
+};
+
+export type WrappedBookerPropsForPlatform = WrappedBookerPropsMain & {
+  isPlatform: true;
+  verifyCode: undefined;
+  customClassNames?: CustomClassNames;
+};
+export type WrappedBookerPropsForWeb = WrappedBookerPropsMain & {
+  isPlatform: false;
   verifyCode: UseVerifyCodeReturnType;
 };
+
+export type WrappedBookerProps = WrappedBookerPropsForPlatform | WrappedBookerPropsForWeb;
 
 export type BookerState = "loading" | "selecting_date" | "selecting_time" | "booking";
 export type BookerLayout = BookerLayouts | "mobile";
 export type BookerAreas = "calendar" | "timeslots" | "main" | "meta" | "header";
+
+export type CustomClassNames = {
+  bookerContainer?: string;
+  eventMetaCustomClassNames?: {
+    eventMetaContainer?: string;
+    eventMetaTitle?: string;
+    eventMetaTimezoneSelect?: string;
+  };
+  datePickerCustomClassNames?: {
+    datePickerContainer?: string;
+    datePickerTitle?: string;
+    datePickerDays?: string;
+    datePickerDate?: string;
+    datePickerDatesActive?: string;
+    datePickerToggle?: string;
+  };
+  availableTimeSlotsCustomClassNames?: {
+    availableTimeSlotsContainer?: string;
+    availableTimeSlotsHeaderContainer?: string;
+    availableTimeSlotsTitle?: string;
+    availableTimeSlotsTimeFormatToggle?: string;
+    availableTimes?: string;
+  };
+  atomsWrapper?: string;
+};

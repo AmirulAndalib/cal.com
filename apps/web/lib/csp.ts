@@ -1,6 +1,5 @@
 import type { IncomingMessage, OutgoingMessage } from "http";
 import type { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 
 import { IS_PRODUCTION } from "@calcom/lib/constants";
 import { WEBAPP_URL } from "@calcom/lib/constants";
@@ -47,6 +46,13 @@ const isPagePathRequest = (url: URL) => {
   return !isNonPagePathPrefix.test(pathname) && !isFile.test(pathname);
 };
 
+function safeParseString(value: unknown): { success: boolean; data?: string } {
+  if (typeof value === "string") {
+    return { success: true, data: value };
+  }
+  return { success: false };
+}
+
 export function csp(req: IncomingMessage | NextRequest | null, res: OutgoingMessage | NextResponse | null) {
   if (!req) {
     return { nonce: undefined };
@@ -54,7 +60,7 @@ export function csp(req: IncomingMessage | NextRequest | null, res: OutgoingMess
   const existingNonce = "cache" in req ? req.headers.get("x-nonce") : req.headers["x-nonce"];
 
   if (existingNonce) {
-    const existingNoneParsed = z.string().safeParse(existingNonce);
+    const existingNoneParsed = safeParseString(existingNonce);
     return { nonce: existingNoneParsed.success ? existingNoneParsed.data : "" };
   }
   if (!req.url) {
@@ -84,7 +90,14 @@ export function csp(req: IncomingMessage | NextRequest | null, res: OutgoingMess
     const enforced =
       "cache" in req ? req.headers.get("x-csp-enforce") === "true" : req.headers["x-csp-enforce"] === "true";
 
-    const name = enforced ? "Content-Security-Policy" : "Content-Security-Policy-Report-Only";
+    // No need to enable REPORT ONLY mode for CSP unless we start actively working on it. See https://github.com/calcom/cal.com/issues/13844
+    const name = enforced ? "Content-Security-Policy" : /*"Content-Security-Policy-Report-Only"*/ null;
+
+    if (!name) {
+      return {
+        nonce: undefined,
+      };
+    }
 
     const value = getCspPolicy(nonce)
       .replace(/\s{2,}/g, " ")

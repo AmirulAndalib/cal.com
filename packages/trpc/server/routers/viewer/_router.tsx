@@ -7,19 +7,24 @@ import { insightsRouter } from "@calcom/features/insights/server/trpc-router";
 import { mergeRouters, router } from "../../trpc";
 import { loggedInViewerRouter } from "../loggedInViewer/_router";
 import { publicViewerRouter } from "../publicViewer/_router";
+import { timezonesRouter } from "../publicViewer/timezones/_router";
 import { adminRouter } from "./admin/_router";
 import { apiKeysRouter } from "./apiKeys/_router";
 import { appsRouter } from "./apps/_router";
+import { attributesRouter } from "./attributes/_router";
 import { authRouter } from "./auth/_router";
 import { availabilityRouter } from "./availability/_router";
 import { bookingsRouter } from "./bookings/_router";
 import { deploymentSetupRouter } from "./deploymentSetup/_router";
+import { domainWideDelegationRouter } from "./domainWideDelegation/_router";
 import { dsyncRouter } from "./dsync/_router";
 import { eventTypesRouter } from "./eventTypes/_router";
 import { googleWorkspaceRouter } from "./googleWorkspace/_router";
+import { highPerfRouter } from "./highPerf/_router";
 import { oAuthRouter } from "./oAuth/_router";
 import { viewerOrganizationsRouter } from "./organizations/_router";
 import { paymentsRouter } from "./payments/_router";
+import { routingFormsRouter } from "./routing-forms/_router";
 import { slotsRouter } from "./slots/_router";
 import { ssoRouter } from "./sso/_router";
 import { viewerTeamsRouter } from "./teams/_router";
@@ -28,6 +33,7 @@ import { workflowsRouter } from "./workflows/_router";
 
 export const viewerRouter = mergeRouters(
   loggedInViewerRouter,
+
   router({
     loggedInViewerRouter,
     public: publicViewerRouter,
@@ -37,7 +43,9 @@ export const viewerRouter = mergeRouters(
     eventTypes: eventTypesRouter,
     availability: availabilityRouter,
     teams: viewerTeamsRouter,
+    timezones: timezonesRouter,
     organizations: viewerOrganizationsRouter,
+    domainWideDelegation: domainWideDelegationRouter,
     webhook: webhookRouter,
     apiKeys: apiKeysRouter,
     slots: slotsRouter,
@@ -56,5 +64,8 @@ export const viewerRouter = mergeRouters(
     oAuth: oAuthRouter,
     googleWorkspace: googleWorkspaceRouter,
     admin: adminRouter,
+    attributes: attributesRouter,
+    highPerf: highPerfRouter,
+    routingForms: routingFormsRouter,
   })
 );

@@ -1,32 +1,42 @@
-import { ProfileRepository } from "@calcom/lib/server/repository/profile";
+import { createOrUpdateMemberships } from "@calcom/features/auth/signup/utils/createOrUpdateMemberships";
 import slugify from "@calcom/lib/slugify";
 import prisma from "@calcom/prisma";
-import { MembershipRole } from "@calcom/prisma/enums";
-import type { getTeamOrThrow } from "@calcom/trpc/server/routers/viewer/teams/inviteMember/utils";
+import type { IdentityProvider } from "@calcom/prisma/enums";
 
 import dSyncUserSelect from "./dSyncUserSelect";
 
-const createUsersAndConnectToOrg = async ({
-  emailsToCreate,
-  org,
-}: {
+type createUsersAndConnectToOrgPropsType = {
   emailsToCreate: string[];
-  org: Awaited<ReturnType<typeof getTeamOrThrow>>;
-}) => {
-  const orgId = org.id;
+  organizationId: number;
+  identityProvider: IdentityProvider;
+  identityProviderId: string | null;
+};
 
+const createUsersAndConnectToOrg = async (
+  createUsersAndConnectToOrgProps: createUsersAndConnectToOrgPropsType
+) => {
+  const { emailsToCreate, organizationId, identityProvider, identityProviderId } =
+    createUsersAndConnectToOrgProps;
   // As of Mar 2024 Prisma createMany does not support nested creates and returning created records
   await prisma.user.createMany({
     data: emailsToCreate.map((email) => {
       const [emailUser, emailDomain] = email.split("@");
       const username = slugify(`${emailUser}-${emailDomain.split(".")[0]}`);
+      const name = username
+        .split("-")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
       return {
         username,
         email,
+        name,
         // Assume verified since coming from directory
         verified: true,
-        invitedTo: orgId,
-        organizationId: orgId,
+        emailVerified: new Date(),
+        invitedTo: organizationId,
+        organizationId,
+        identityProvider,
+        identityProviderId,
       };
     }),
   });
@@ -39,25 +49,17 @@ const createUsersAndConnectToOrg = async ({
     },
     select: dSyncUserSelect,
   });
-
-  await prisma.membership.createMany({
-    data: users.map((user) => ({
-      userId: user.id,
-      teamId: orgId,
-      role: MembershipRole.MEMBER,
-    })),
-  });
-
-  await prisma.profile.createMany({
-    data: users.map((user) => ({
-      uid: ProfileRepository.generateProfileUid(),
-      userId: user.id,
-      // The username is already set when creating the user
-      username: user.username!,
-      organizationId: orgId,
-    })),
-  });
-
+  // Assign created users to organization
+  for (const user of users) {
+    await createOrUpdateMemberships({
+      user,
+      team: {
+        id: organizationId,
+        isOrganization: true,
+        parentId: null, // orgs don't have a parentId
+      },
+    });
+  }
   return users;
 };
 

@@ -4,11 +4,11 @@ import type {
   LocationObject,
 } from "@calcom/app-store/locations";
 import { getEventLocationType, getTranslatedLocation } from "@calcom/app-store/locations";
+import { useIsPlatform } from "@calcom/atoms/monorepo";
 import { classNames } from "@calcom/lib";
 import { useLocale } from "@calcom/lib/hooks/useLocale";
 import invertLogoOnDark from "@calcom/lib/invertLogoOnDark";
-import { Tooltip } from "@calcom/ui";
-import { Link } from "@calcom/ui/components/icon";
+import { Icon, Tooltip } from "@calcom/ui";
 
 const excludeNullValues = (value: unknown) => !!value;
 
@@ -19,10 +19,12 @@ function RenderIcon({
   eventLocationType: DefaultEventLocationType | EventLocationTypeFromApp;
   isTooltip: boolean;
 }) {
+  const isPlatform = useIsPlatform();
+
   return (
     <img
-      src={eventLocationType.iconUrl}
-      className={classNames(invertLogoOnDark(eventLocationType?.iconUrl, true), "me-[10px] h-4 w-4")}
+      src={`${isPlatform ? process.env.NEXT_PUBLIC_WEBAPP_URL : ""}${eventLocationType.iconUrl}`}
+      className={classNames(invertLogoOnDark(eventLocationType?.iconUrl, isTooltip), "me-[10px] h-4 w-4")}
       alt={`${eventLocationType.label} icon`}
     />
   );
@@ -59,6 +61,7 @@ function RenderLocationTooltip({ locations }: { locations: LocationObject[] }) {
 
 export function AvailableEventLocations({ locations }: { locations: LocationObject[] }) {
   const { t } = useLocale();
+  const isPlatform = useIsPlatform();
 
   const renderLocations = locations.map(
     (
@@ -79,7 +82,7 @@ export function AvailableEventLocations({ locations }: { locations: LocationObje
       return (
         <div key={`${location.type}-${index}`} className="flex flex-row items-center text-sm font-medium">
           {eventLocationType.iconUrl === "/link.svg" ? (
-            <Link className="text-default h-4 w-4 ltr:mr-[10px] rtl:ml-[10px]" />
+            <Icon name="link" className="text-default h-4 w-4 ltr:mr-[10px] rtl:ml-[10px]" />
           ) : (
             <RenderIcon eventLocationType={eventLocationType} isTooltip={false} />
           )}
@@ -95,11 +98,15 @@ export function AvailableEventLocations({ locations }: { locations: LocationObje
 
   return filteredLocations.length > 1 ? (
     <div className="flex flex-row items-center text-sm font-medium">
-      <img
-        src="/map-pin-dark.svg"
-        className={classNames("me-[10px] h-4 w-4 opacity-70 dark:invert")}
-        alt="map-pin"
-      />
+      {isPlatform ? (
+        <Icon name="map-pin" className={classNames("me-[10px] h-4 w-4 opacity-70 dark:invert")} />
+      ) : (
+        <img
+          src="/map-pin-dark.svg"
+          className={classNames("me-[10px] h-4 w-4 opacity-70 dark:invert")}
+          alt="map-pin"
+        />
+      )}
       <Tooltip content={<RenderLocationTooltip locations={locations} />}>
         <p className="line-clamp-1">
           {t("location_options", {
