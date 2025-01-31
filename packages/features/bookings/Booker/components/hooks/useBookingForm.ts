@@ -5,14 +5,14 @@ import { z } from "zod";
 
 import type { EventLocationType } from "@calcom/app-store/locations";
 import { useBookerStore } from "@calcom/features/bookings/Booker/store";
-import type { useEventReturnType } from "@calcom/features/bookings/Booker/utils/event";
 import getBookingResponsesSchema from "@calcom/features/bookings/lib/getBookingResponsesSchema";
+import type { BookerEvent } from "@calcom/features/bookings/types";
 import { useLocale } from "@calcom/lib/hooks/useLocale";
 
 import { useInitialFormValues } from "./useInitialFormValues";
 
 export interface IUseBookingForm {
-  event: useEventReturnType;
+  event?: Pick<BookerEvent, "bookingFields"> | null;
   sessionEmail?: string | null;
   sessionName?: string | null;
   sessionUsername?: string | null;
@@ -22,6 +22,7 @@ export interface IUseBookingForm {
     guests: string[];
     name: string | null;
   };
+  lastBookingResponse?: Record<string, string>;
 }
 
 export type UseBookingFormReturnType = ReturnType<typeof useBookingForm>;
@@ -34,6 +35,7 @@ export const useBookingForm = ({
   hasSession,
   extraOptions,
   prefillFormParams,
+  lastBookingResponse,
 }: IUseBookingForm) => {
   const rescheduleUid = useBookerStore((state) => state.rescheduleUid);
   const bookingData = useBookerStore((state) => state.bookingData);
@@ -42,9 +44,9 @@ export const useBookingForm = ({
 
   const bookingFormSchema = z
     .object({
-      responses: event?.data
+      responses: event
         ? getBookingResponsesSchema({
-            bookingFields: event.data.bookingFields,
+            bookingFields: event.bookingFields,
             view: rescheduleUid ? "reschedule" : "booking",
           })
         : // Fallback until event is loaded.
@@ -58,11 +60,12 @@ export const useBookingForm = ({
     // Key is not really part of form values, but only used to have a key
     // to set generic error messages on. Needed until RHF has implemented root error keys.
     globalError: undefined;
+    cfToken?: string;
   };
   const isRescheduling = !!rescheduleUid && !!bookingData;
 
   const { initialValues, key } = useInitialFormValues({
-    eventType: event.data,
+    eventType: event,
     rescheduleUid,
     isRescheduling,
     email: sessionEmail,
@@ -71,6 +74,7 @@ export const useBookingForm = ({
     hasSession,
     extraOptions,
     prefillFormParams,
+    lastBookingResponse,
   });
 
   const bookingForm = useForm<BookingFormValues>({
@@ -101,7 +105,7 @@ export const useBookingForm = ({
 
     // It shouldn't be possible that this method is fired without having event data,
     // but since in theory (looking at the types) it is possible, we still handle that case.
-    if (!event?.data) {
+    if (!event) {
       bookingForm.setError("globalError", { message: t("error_booking_event") });
       return;
     }

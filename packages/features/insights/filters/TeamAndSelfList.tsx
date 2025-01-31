@@ -8,15 +8,20 @@ import {
 import { getPlaceholderAvatar } from "@calcom/lib/defaultAvatarImage";
 import { useLocale } from "@calcom/lib/hooks/useLocale";
 import { trpc } from "@calcom/trpc";
-import { AnimatedPopover, Avatar, Divider } from "@calcom/ui";
-import { Layers, User } from "@calcom/ui/components/icon";
+import { AnimatedPopover, Avatar, Divider, Icon } from "@calcom/ui";
 
 import { useFilterContext } from "../context/provider";
 
-export const TeamAndSelfList = () => {
+export const TeamAndSelfList = ({
+  omitOrg = false,
+  className = "",
+}: {
+  omitOrg?: boolean;
+  className?: string;
+}) => {
   const { t } = useLocale();
   const session = useSession();
-
+  const currentOrgId = session.data?.user.org?.id;
   const { filter, setConfigFilters } = useFilterContext();
   const { selectedTeamId, selectedUserId, isAll } = filter;
   const { data, isSuccess } = trpc.viewer.insights.teamListForUser.useQuery(undefined, {
@@ -80,20 +85,22 @@ export const TeamAndSelfList = () => {
   };
 
   const text = getTextPopover();
+  const isOrgDataAvailable = !!data && data.length > 0 && !!data[0].isOrg;
 
   return (
-    <AnimatedPopover text={text}>
+    <AnimatedPopover text={text} popoverTriggerClassNames={className}>
       <FilterCheckboxFieldsContainer>
-        {isSuccess && data?.length > 0 && data[0].isOrg && (
+        {isOrgDataAvailable && (
           <FilterCheckboxField
             id="all"
-            icon={<Layers className="h-4 w-4" />}
+            icon={<Icon name="layers" className="h-4 w-4" />}
             checked={isAll}
             onChange={(e) => {
               setConfigFilters({
-                selectedTeamId: data[0].isOrg ? data[0].id : null,
+                selectedTeamId: data[0].id,
                 selectedUserId: null,
                 selectedTeamName: null,
+                selectedRoutingFormId: null,
                 isAll: true,
               });
             }}
@@ -102,58 +109,68 @@ export const TeamAndSelfList = () => {
         )}
 
         <Divider />
-        {data?.map((team) => (
-          <FilterCheckboxField
-            key={team.id}
-            id={team.name || ""}
-            label={team.name || ""}
-            checked={selectedTeamId === team.id && !isAll}
-            onChange={(e) => {
-              if (e.target.checked) {
-                setConfigFilters({
-                  selectedTeamId: team.id,
-                  selectedUserId: null,
-                  selectedTeamName: team.name,
-                  isAll: false,
-                  // Setting these to null to reset the filters
-                  selectedEventTypeId: null,
-                  selectedMemberUserId: null,
-                  selectedFilter: null,
-                });
-              } else if (!e.target.checked) {
-                setConfigFilters({
-                  selectedTeamId: null,
-                  selectedTeamName: null,
-                  isAll: false,
-                });
+        {data?.map((team) => {
+          if (omitOrg && team.id === currentOrgId) return null;
+          return (
+            <FilterCheckboxField
+              key={team.id}
+              id={team.name || ""}
+              label={team.name || ""}
+              checked={selectedTeamId === team.id && !isAll}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  setConfigFilters({
+                    selectedTeamId: team.id,
+                    selectedUserId: null,
+                    selectedTeamName: team.name,
+                    isAll: false,
+                    // Setting these to null to reset the filters
+                    selectedEventTypeId: null,
+                    selectedMemberUserId: null,
+                    selectedFilter: null,
+                    selectedRoutingFormId: null,
+                  });
+                } else if (!e.target.checked) {
+                  setConfigFilters({
+                    selectedTeamId: isOrgDataAvailable ? data[0].id : null,
+                    selectedTeamName: null,
+                    selectedRoutingFormId: null,
+                    isAll: isOrgDataAvailable,
+                  });
+                }
+              }}
+              icon={
+                <Avatar
+                  alt={team.name || ""}
+                  imageSrc={getPlaceholderAvatar(team.logoUrl, team.name)}
+                  size="xs"
+                />
               }
-            }}
-            icon={
-              <Avatar
-                alt={team?.name || ""}
-                imageSrc={getPlaceholderAvatar(team.logo, team?.name as string)}
-                size="xs"
-              />
-            }
-          />
-        ))}
+            />
+          );
+        })}
         <Divider />
 
         <FilterCheckboxField
           id="yours"
-          icon={<User className="h-4 w-4" />}
+          icon={<Icon name="user" className="h-4 w-4" />}
           checked={selectedUserId === session.data?.user.id}
           onChange={(e) => {
             if (e.target.checked) {
               setConfigFilters({
+                selectedRoutingFormId: null,
                 selectedUserId: session.data?.user.id,
+                selectedMemberUserId: null,
                 selectedTeamId: null,
                 isAll: false,
               });
             } else if (!e.target.checked) {
               setConfigFilters({
+                selectedTeamId: isOrgDataAvailable ? data[0].id : null,
                 selectedUserId: null,
-                isAll: false,
+                selectedTeamName: null,
+                selectedRoutingFormId: null,
+                isAll: isOrgDataAvailable,
               });
             }
           }}

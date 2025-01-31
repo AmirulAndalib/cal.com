@@ -27,7 +27,7 @@ const checkInvalidGoogleCalendarCredentials = async ({ ctx }: Props) => {
 
   const { connectedCalendars } = await getConnectedCalendars(
     calendarCredentials,
-    ctx.user.selectedCalendars,
+    ctx.user.userLevelSelectedCalendars,
     ctx.user.destinationCalendar?.externalId
   );
 
@@ -35,7 +35,7 @@ const checkInvalidGoogleCalendarCredentials = async ({ ctx }: Props) => {
 };
 
 export const getUserTopBannersHandler = async ({ ctx }: Props) => {
-  const upgradeableTeamMememberships = getUpgradeableHandler({ ctx });
+  const upgradeableTeamMememberships = getUpgradeableHandler({ userId: ctx.user.id });
   const upgradeableOrgMememberships = checkIfOrgNeedsUpgradeHandler({ ctx });
   const shouldEmailVerify = shouldVerifyEmailHandler({ ctx });
   const isInvalidCalendarCredential = checkInvalidGoogleCalendarCredentials({ ctx });

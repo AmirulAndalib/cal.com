@@ -1,7 +1,9 @@
 import dayjs from "@calcom/dayjs";
-import { SENDER_ID } from "@calcom/lib/constants";
+import { bulkShortenLinks } from "@calcom/ee/workflows/lib/reminders/utils";
+import { SENDER_ID, WEBSITE_URL } from "@calcom/lib/constants";
 import logger from "@calcom/lib/logger";
 import type { TimeFormat } from "@calcom/lib/timeFormat";
+import type { PrismaClient } from "@calcom/prisma";
 import prisma from "@calcom/prisma";
 import type { Prisma } from "@calcom/prisma/client";
 import { WorkflowTemplates, WorkflowActions, WorkflowMethods } from "@calcom/prisma/enums";
@@ -28,12 +30,14 @@ export type AttendeeInBookingInfo = {
   firstName?: string;
   lastName?: string;
   email: string;
+  phoneNumber?: string | null;
   timeZone: string;
   language: { locale: string };
 };
 
 export type BookingInfo = {
   uid?: string | null;
+  bookerUrl: string;
   attendees: AttendeeInBookingInfo[];
   organizer: {
     language: { locale: string };
@@ -43,8 +47,8 @@ export type BookingInfo = {
     timeFormat?: TimeFormat;
     username?: string;
   };
-  eventType: {
-    slug?: string;
+  eventType?: {
+    slug: string;
     recurringEvent?: RecurringEvent | null;
   };
   startTime: string;
@@ -54,6 +58,8 @@ export type BookingInfo = {
   additionalNotes?: string | null;
   responses?: CalEventResponses | null;
   metadata?: Prisma.JsonValue;
+  cancellationReason?: string | null;
+  rescheduleReason?: string | null;
 };
 
 export type ScheduleTextReminderAction = Extract<
@@ -67,6 +73,7 @@ export interface ScheduleTextReminderArgs extends ScheduleReminderArgs {
   userId?: number | null;
   teamId?: number | null;
   isVerificationPending?: boolean;
+  prisma?: PrismaClient;
 }
 
 export const scheduleSMSReminder = async (args: ScheduleTextReminderArgs) => {
@@ -85,6 +92,7 @@ export const scheduleSMSReminder = async (args: ScheduleTextReminderArgs) => {
     isVerificationPending = false,
     seatReferenceUid,
   } = args;
+
   const { startTime, endTime } = evt;
   const uid = evt.uid as string;
   const currentDate = dayjs();
@@ -139,6 +147,15 @@ export const scheduleSMSReminder = async (args: ScheduleTextReminderArgs) => {
   let smsMessage = message;
 
   if (smsMessage) {
+    const urls = {
+      meetingUrl: bookingMetadataSchema.parse(evt.metadata || {})?.videoCallUrl || "",
+      cancelLink: `${evt.bookerUrl ?? WEBSITE_URL}/booking/${evt.uid}?cancel=true`,
+      rescheduleLink: `${evt.bookerUrl ?? WEBSITE_URL}/reschedule/${evt.uid}`,
+    };
+
+    const [{ shortLink: meetingUrl }, { shortLink: cancelLink }, { shortLink: rescheduleLink }] =
+      await bulkShortenLinks([urls.meetingUrl, urls.cancelLink, urls.rescheduleLink]);
+
     const variables: VariablesType = {
       eventName: evt.title,
       organizerName: evt.organizer.name,
@@ -152,9 +169,14 @@ export const scheduleSMSReminder = async (args: ScheduleTextReminderArgs) => {
       location: evt.location,
       additionalNotes: evt.additionalNotes,
       responses: evt.responses,
-      meetingUrl: bookingMetadataSchema.parse(evt.metadata || {})?.videoCallUrl,
-      cancelLink: `/booking/${evt.uid}?cancel=true`,
-      rescheduleLink: `/${evt.organizer.username}/${evt.eventType.slug}?rescheduleUid=${evt.uid}`,
+      meetingUrl,
+      cancelLink,
+      rescheduleLink,
+      cancelReason: evt.cancellationReason,
+      rescheduleReason: evt.rescheduleReason,
+      attendeeTimezone: evt.attendees[0].timeZone,
+      eventTimeInAttendeeTimezone: dayjs(evt.startTime).tz(evt.attendees[0].timeZone),
+      eventEndTimeInAttendeeTimezone: dayjs(evt.endTime).tz(evt.attendees[0].timeZone),
     };
     const customMessage = customTemplate(smsMessage, variables, locale, evt.organizer.timeFormat);
     smsMessage = customMessage.text;
@@ -162,6 +184,7 @@ export const scheduleSMSReminder = async (args: ScheduleTextReminderArgs) => {
     smsMessage =
       smsReminderTemplate(
         false,
+        evt.organizer.language.locale,
         action,
         evt.organizer.timeFormat,
         evt.startTime,
@@ -183,7 +206,7 @@ export const scheduleSMSReminder = async (args: ScheduleTextReminderArgs) => {
       triggerEvent === WorkflowTriggerEvents.RESCHEDULE_EVENT
     ) {
       try {
-        await twilio.sendSMS(reminderPhone, smsMessage, senderID);
+        await twilio.sendSMS(reminderPhone, smsMessage, senderID, userId, teamId);
       } catch (error) {
         log.error(`Error sending SMS with error ${error}`);
       }
@@ -202,20 +225,24 @@ export const scheduleSMSReminder = async (args: ScheduleTextReminderArgs) => {
             reminderPhone,
             smsMessage,
             scheduledDate.toDate(),
-            senderID
+            senderID,
+            userId,
+            teamId
           );
 
-          await prisma.workflowReminder.create({
-            data: {
-              bookingUid: uid,
-              workflowStepId: workflowStepId,
-              method: WorkflowMethods.SMS,
-              scheduledDate: scheduledDate.toDate(),
-              scheduled: true,
-              referenceId: scheduledSMS.sid,
-              seatReferenceId: seatReferenceUid,
-            },
-          });
+          if (scheduledSMS) {
+            await prisma.workflowReminder.create({
+              data: {
+                bookingUid: uid,
+                workflowStepId: workflowStepId,
+                method: WorkflowMethods.SMS,
+                scheduledDate: scheduledDate.toDate(),
+                scheduled: true,
+                referenceId: scheduledSMS.sid,
+                seatReferenceId: seatReferenceUid,
+              },
+            });
+          }
         } catch (error) {
           log.error(`Error scheduling SMS with error ${error}`);
         }

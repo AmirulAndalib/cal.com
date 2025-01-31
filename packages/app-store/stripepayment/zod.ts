@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { RefundPolicy } from "@calcom/lib/payment/types";
+
 import { eventTypeAppCardZod } from "../eventTypeAppCardZod";
 import { paymentOptions } from "./lib/constants";
 
@@ -18,6 +20,9 @@ export const appDataSchema = eventTypeAppCardZod.merge(
     currency: z.string(),
     paymentOption: paymentOptionEnum.optional(),
     enabled: z.boolean().optional(),
+    refundPolicy: z.nativeEnum(RefundPolicy).optional(),
+    refundDaysCount: z.number().optional(),
+    refundCountCalendarDays: z.boolean().optional(),
   })
 );
 
@@ -26,6 +31,4 @@ export const appKeysSchema = z.object({
   client_secret: z.string().startsWith("sk_").min(1),
   public_key: z.string().startsWith("pk_").min(1),
   webhook_secret: z.string().startsWith("whsec_").min(1),
-  payment_fee_fixed: z.number().min(0),
-  payment_fee_percentage: z.number().min(0),
 });

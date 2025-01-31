@@ -5,9 +5,9 @@ import Link from "next/link";
 import React, { forwardRef } from "react";
 
 import classNames from "@calcom/lib/classNames";
-import type { SVGComponent } from "@calcom/types/SVGComponent";
 
-import { Plus } from "../icon";
+import { Icon } from "../icon";
+import type { IconName } from "../icon";
 import { Tooltip } from "../tooltip";
 
 type InferredVariantProps = VariantProps<typeof buttonClasses>;
@@ -17,14 +17,16 @@ export type ButtonBaseProps = {
   /** Action that happens when the button is clicked */
   onClick?: (event: React.MouseEvent<HTMLElement, MouseEvent>) => void;
   /**Left aligned icon*/
-  StartIcon?: SVGComponent | React.ElementType;
+  CustomStartIcon?: React.ReactNode;
+  StartIcon?: IconName;
   /**Right aligned icon */
-  EndIcon?: SVGComponent;
+  EndIcon?: IconName;
   shallow?: boolean;
   /**Tool tip used when icon size is set to small */
-  tooltip?: string;
+  tooltip?: string | React.ReactNode;
   tooltipSide?: "top" | "right" | "bottom" | "left";
   tooltipOffset?: number;
+  tooltipClassName?: string;
   disabled?: boolean;
   flex?: boolean;
 } & Omit<InferredVariantProps, "color"> & {
@@ -57,7 +59,7 @@ export const buttonClasses = cva(
           "border border-default text-emphasis hover:text-red-700 dark:hover:text-red-100 focus-visible:text-red-700  hover:border-red-100 focus-visible:border-red-100 hover:bg-error  focus-visible:bg-error focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset focus-visible:ring-red-700 disabled:bg-red-100 disabled:border-red-200 disabled:text-red-700 disabled:hover:border-red-200 disabled:opacity-40",
       },
       size: {
-        sm: "px-3 py-2 leading-4 rounded-sm" /** For backwards compatibility */,
+        sm: "px-3 py-2 leading-4 rounded-md" /** For backwards compatibility */,
         base: "h-9 px-4 py-2.5 ",
         lg: "h-[36px] px-4 py-2.5 ",
       },
@@ -127,7 +129,9 @@ export const Button = forwardRef<HTMLAnchorElement | HTMLButtonElement, ButtonPr
     type = "button",
     tooltipSide = "top",
     tooltipOffset = 4,
+    tooltipClassName,
     StartIcon,
+    CustomStartIcon,
     EndIcon,
     shallow,
     // attributes propagated from `HTMLAnchorProps` or `HTMLButtonProps`
@@ -154,23 +158,28 @@ export const Button = forwardRef<HTMLAnchorElement | HTMLButtonElement, ButtonPr
         : props.onClick,
     },
     <>
-      {StartIcon && (
-        <>
-          {variant === "fab" ? (
-            <>
-              <StartIcon className="hidden h-4 w-4 stroke-[1.5px] ltr:-ml-1 ltr:mr-2 rtl:-mr-1 rtl:ml-2 md:inline-flex" />
-              <Plus data-testid="plus" className="inline h-6 w-6 md:hidden" />
-            </>
-          ) : (
-            <StartIcon
-              className={classNames(
-                variant === "icon" && "h-4 w-4",
-                variant === "button" && "h-4 w-4 stroke-[1.5px] ltr:-ml-1 ltr:mr-2 rtl:-mr-1 rtl:ml-2"
-              )}
-            />
-          )}
-        </>
-      )}
+      {CustomStartIcon ||
+        (StartIcon && (
+          <>
+            {variant === "fab" ? (
+              <>
+                <Icon
+                  name={StartIcon}
+                  className="hidden h-4 w-4 stroke-[1.5px] ltr:-ml-1 ltr:mr-2 rtl:-mr-1 rtl:ml-2 md:inline-flex"
+                />
+                <Icon name="plus" data-testid="plus" className="inline h-6 w-6 md:hidden" />
+              </>
+            ) : (
+              <Icon
+                name={StartIcon}
+                className={classNames(
+                  variant === "icon" && "h-4 w-4",
+                  variant === "button" && "h-4 w-4 stroke-[1.5px] ltr:-ml-1 ltr:mr-2 rtl:-mr-1 rtl:ml-2"
+                )}
+              />
+            )}
+          </>
+        ))}
       {variant === "fab" ? <span className="hidden md:inline">{props.children}</span> : props.children}
       {loading && (
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 transform">
@@ -195,11 +204,12 @@ export const Button = forwardRef<HTMLAnchorElement | HTMLButtonElement, ButtonPr
         <>
           {variant === "fab" ? (
             <>
-              <EndIcon className="-mr-1 me-2 ms-2 hidden h-5 w-5 md:inline" />
-              <Plus data-testid="plus" className="inline h-6 w-6 md:hidden" />
+              <Icon name={EndIcon} className="-mr-1 me-2 ms-2 hidden h-5 w-5 md:inline" />
+              <Icon name="plus" data-testid="plus" className="inline h-6 w-6 md:hidden" />
             </>
           ) : (
-            <EndIcon
+            <Icon
+              name={EndIcon}
               className={classNames(
                 "inline-flex",
                 variant === "icon" && "h-4 w-4",
@@ -221,7 +231,8 @@ export const Button = forwardRef<HTMLAnchorElement | HTMLButtonElement, ButtonPr
       data-testid="wrapper"
       tooltip={props.tooltip}
       tooltipSide={tooltipSide}
-      tooltipOffset={tooltipOffset}>
+      tooltipOffset={tooltipOffset}
+      tooltipClassName={tooltipClassName}>
       {element}
     </Wrapper>
   );
@@ -232,18 +243,25 @@ const Wrapper = ({
   tooltip,
   tooltipSide,
   tooltipOffset,
+  tooltipClassName,
 }: {
-  tooltip?: string;
+  tooltip?: string | React.ReactNode;
   children: React.ReactNode;
   tooltipSide?: "top" | "right" | "bottom" | "left";
   tooltipOffset?: number;
+  tooltipClassName?: string;
 }) => {
   if (!tooltip) {
     return <>{children}</>;
   }
 
   return (
-    <Tooltip data-testid="tooltip" content={tooltip} side={tooltipSide} sideOffset={tooltipOffset}>
+    <Tooltip
+      data-testid="tooltip"
+      className={tooltipClassName}
+      content={tooltip}
+      side={tooltipSide}
+      sideOffset={tooltipOffset}>
       {children}
     </Tooltip>
   );

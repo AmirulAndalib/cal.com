@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
-import type { z } from "zod";
+import { z } from "zod";
 
 import { useBookerStore } from "@calcom/features/bookings/Booker/store";
-import type { useEvent } from "@calcom/features/bookings/Booker/utils/event";
 import type getBookingResponsesSchema from "@calcom/features/bookings/lib/getBookingResponsesSchema";
 import { getBookingResponsesPartialSchema } from "@calcom/features/bookings/lib/getBookingResponsesSchema";
+import type { BookerEvent } from "@calcom/features/bookings/types";
 
 export type useInitialFormValuesReturnType = ReturnType<typeof useInitialFormValues>;
 
 type UseInitialFormValuesProps = {
-  eventType: ReturnType<typeof useEvent>["data"];
+  eventType?: Pick<BookerEvent, "bookingFields"> | null;
   rescheduleUid: string | null;
   isRescheduling: boolean;
   email?: string | null;
@@ -21,6 +21,7 @@ type UseInitialFormValuesProps = {
     guests: string[];
     name: string | null;
   };
+  lastBookingResponse?: Record<string, string>;
 };
 
 export function useInitialFormValues({
@@ -33,8 +34,12 @@ export function useInitialFormValues({
   hasSession,
   extraOptions,
   prefillFormParams,
+  lastBookingResponse,
 }: UseInitialFormValuesProps) {
-  const [initialValues, setDefaultValues] = useState<Record<string, unknown>>({});
+  const [initialValues, setDefaultValues] = useState<{
+    responses?: Partial<z.infer<ReturnType<typeof getBookingResponsesSchema>>>;
+    bookingId?: number;
+  }>({});
   const bookingData = useBookerStore((state) => state.bookingData);
   const formValues = useBookerStore((state) => state.formValues);
   useEffect(() => {
@@ -59,6 +64,7 @@ export function useInitialFormValues({
         // `guests` because the `name` of the corresponding bookingField is `guests`
         guests: prefillFormParams.guests,
       });
+      const parsedLastBookingResponse = z.record(z.any()).nullish().parse(lastBookingResponse);
 
       const defaultUserValues = {
         email:
@@ -66,13 +72,13 @@ export function useInitialFormValues({
             ? bookingData?.attendees[0].email
             : !!parsedQuery["email"]
             ? parsedQuery["email"]
-            : email ?? "",
+            : email ?? parsedLastBookingResponse?.email ?? "",
         name:
           rescheduleUid && bookingData && bookingData.attendees.length > 0
             ? bookingData?.attendees[0].name
             : !!parsedQuery["name"]
             ? parsedQuery["name"]
-            : name ?? username ?? "",
+            : name ?? username ?? parsedLastBookingResponse?.name ?? "",
       };
 
       if (!isRescheduling) {
@@ -90,7 +96,7 @@ export function useInitialFormValues({
         defaults.responses = {
           ...responses,
           name: defaultUserValues.name,
-          email: defaultUserValues.email,
+          email: defaultUserValues.email ?? "",
         };
 
         setDefaultValues(defaults);
@@ -104,6 +110,7 @@ export function useInitialFormValues({
 
       const defaults = {
         responses: {} as Partial<z.infer<ReturnType<typeof getBookingResponsesSchema>>>,
+        bookingId: bookingData?.id,
       };
 
       const responses = eventType.bookingFields.reduce((responses, field) => {
@@ -115,7 +122,7 @@ export function useInitialFormValues({
       defaults.responses = {
         ...responses,
         name: defaultUserValues.name,
-        email: defaultUserValues.email,
+        email: defaultUserValues.email ?? "",
       };
       setDefaultValues(defaults);
     })();
@@ -126,6 +133,7 @@ export function useInitialFormValues({
     formValues,
     isRescheduling,
     bookingData,
+    bookingData?.id,
     rescheduleUid,
     email,
     name,
@@ -134,7 +142,8 @@ export function useInitialFormValues({
   ]);
 
   // When initialValues is available(after doing async schema parsing) or session is available(so that we can prefill logged-in user email and name), we need to reset the form with the initialValues
-  const key = `${Object.keys(initialValues).length}_${hasSession ? 1 : 0}`;
+  // We also need the key to change if the bookingId changes, so that the form is reset and rerendered with the new initialValues
+  const key = `${Object.keys(initialValues).length}_${hasSession ? 1 : 0}_${initialValues?.bookingId ?? 0}`;
 
   return { initialValues, key };
 }

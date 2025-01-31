@@ -2,6 +2,7 @@
 import dayjs from "@calcom/dayjs";
 import { handleWebhookTrigger } from "@calcom/features/bookings/lib/handleWebhookTrigger";
 import { scheduleWorkflowReminders } from "@calcom/features/ee/workflows/lib/reminders/reminderScheduler";
+import type { EventPayloadType } from "@calcom/features/webhooks/lib/sendPayload";
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import { HttpError } from "@calcom/lib/http-error";
 import prisma from "@calcom/prisma";
@@ -29,8 +30,13 @@ const handleSeats = async (newSeatedBookingObject: NewSeatedBookingObject) => {
     subscriberOptions,
     eventTrigger,
     evt,
+    workflows,
+    rescheduledBy,
+    rescheduleReason,
+    isDryRun = false,
   } = newSeatedBookingObject;
-
+  // TODO: We could allow doing more things to support good dry run for seats
+  if (isDryRun) return;
   const loggerWithEventDetails = createLoggerWithEventDetails(eventType.id, reqBodyUser, eventType.slug);
 
   let resultBooking: HandleSeatsResultBooking = null;
@@ -60,7 +66,6 @@ const handleSeats = async (newSeatedBookingObject: NewSeatedBookingObject) => {
       status: true,
       smsReminderNumber: true,
       endTime: true,
-      scheduledJobs: true,
     },
   });
 
@@ -75,7 +80,9 @@ const handleSeats = async (newSeatedBookingObject: NewSeatedBookingObject) => {
 
   // See if attendee is already signed up for timeslot
   if (
-    seatedBooking.attendees.find((attendee) => attendee.email === invitee[0].email) &&
+    seatedBooking.attendees.find((attendee) => {
+      return attendee.email === invitee[0].email;
+    }) &&
     dayjs.utc(seatedBooking.startTime).format() === evt.startTime
   ) {
     throw new HttpError({ statusCode: 409, message: ErrorCode.AlreadySignedUpForBooking });
@@ -91,34 +98,48 @@ const handleSeats = async (newSeatedBookingObject: NewSeatedBookingObject) => {
       loggerWithEventDetails
     );
   } else {
-    resultBooking = await createNewSeat(newSeatedBookingObject, seatedBooking);
+    resultBooking = await createNewSeat(newSeatedBookingObject, seatedBooking, reqBodyMetadata);
   }
 
   // If the resultBooking is defined we should trigger workflows else, trigger in handleNewBooking
   if (resultBooking) {
-    // Obtain event metadata that includes videoCallUrl
-    const metadata = evt.videoCallData?.url ? { videoCallUrl: evt.videoCallData.url } : undefined;
+    const metadata = {
+      ...(typeof resultBooking.metadata === "object" && resultBooking.metadata),
+      ...reqBodyMetadata,
+    };
     try {
       await scheduleWorkflowReminders({
-        workflows: eventType.workflows,
+        workflows,
         smsReminderNumber: smsReminderNumber || null,
-        calendarEvent: { ...evt, ...{ metadata, eventType: { slug: eventType.slug } } },
+        calendarEvent: {
+          ...evt,
+          rescheduleReason,
+          ...{
+            metadata,
+            eventType: {
+              slug: eventType.slug,
+              schedulingType: eventType.schedulingType,
+              hosts: eventType.hosts,
+            },
+          },
+        },
         isNotConfirmed: evt.requiresConfirmation || false,
         isRescheduleEvent: !!rescheduleUid,
         isFirstRecurringEvent: true,
         emailAttendeeSendToOverride: bookerEmail,
         seatReferenceUid: evt.attendeeSeatId,
-        eventTypeRequiresConfirmation: eventType.requiresConfirmation,
+        isDryRun,
       });
     } catch (error) {
       loggerWithEventDetails.error("Error while scheduling workflow reminders", JSON.stringify({ error }));
     }
 
-    const webhookData = {
+    const webhookData: EventPayloadType = {
       ...evt,
       ...eventTypeInfo,
       uid: resultBooking?.uid || uid,
       bookingId: seatedBooking?.id,
+      attendeeSeatId: resultBooking?.seatReferenceUid,
       rescheduleUid,
       rescheduleStartTime: originalRescheduledBooking?.startTime
         ? dayjs(originalRescheduledBooking?.startTime).utc().format()
@@ -126,13 +147,14 @@ const handleSeats = async (newSeatedBookingObject: NewSeatedBookingObject) => {
       rescheduleEndTime: originalRescheduledBooking?.endTime
         ? dayjs(originalRescheduledBooking?.endTime).utc().format()
         : undefined,
-      metadata: { ...metadata, ...reqBodyMetadata },
+      metadata,
       eventTypeId,
       status: "ACCEPTED",
       smsReminderNumber: seatedBooking?.smsReminderNumber || undefined,
+      rescheduledBy,
     };
 
-    await handleWebhookTrigger({ subscriberOptions, eventTrigger, webhookData });
+    await handleWebhookTrigger({ subscriberOptions, eventTrigger, webhookData, isDryRun });
   }
 
   return resultBooking;

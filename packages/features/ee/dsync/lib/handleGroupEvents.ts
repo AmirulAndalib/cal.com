@@ -1,11 +1,11 @@
 import type { DirectorySyncEvent, Group } from "@boxyhq/saml-jackson";
 
-import jackson from "@calcom/features/ee/sso/lib/jackson";
 import { createAProfileForAnExistingUser } from "@calcom/lib/createAProfileForAnExistingUser";
+import logger from "@calcom/lib/logger";
+import { safeStringify } from "@calcom/lib/safeStringify";
 import { getTranslation } from "@calcom/lib/server/i18n";
 import prisma from "@calcom/prisma";
-import { MembershipRole } from "@calcom/prisma/enums";
-import { teamMetadataSchema } from "@calcom/prisma/zod-utils";
+import { IdentityProvider, MembershipRole } from "@calcom/prisma/enums";
 import {
   getTeamOrThrow,
   sendSignupToOrganizationEmail,
@@ -14,8 +14,10 @@ import {
 
 import createUsersAndConnectToOrg from "./users/createUsersAndConnectToOrg";
 
+const log = logger.getSubLogger({ prefix: ["dsync/handleGroupEvents"] });
+
 const handleGroupEvents = async (event: DirectorySyncEvent, organizationId: number) => {
-  const { dsyncController } = await jackson();
+  log.debug("called", safeStringify(event));
   // Find the group name associated with the event
   const eventData = event.data as Group;
 
@@ -96,8 +98,13 @@ const handleGroupEvents = async (event: DirectorySyncEvent, organizationId: numb
   // For each team linked to the dsync group name provision members
   for (const group of groupNames) {
     if (newUserEmails.length) {
-      const newUsers = await createUsersAndConnectToOrg({
+      const createUsersAndConnectToOrgProps = {
         emailsToCreate: newUserEmails,
+        identityProvider: IdentityProvider.CAL,
+        identityProviderId: null,
+      };
+      const newUsers = await createUsersAndConnectToOrg({
+        createUsersAndConnectToOrgProps,
         org,
       });
       await prisma.membership.createMany({
@@ -112,7 +119,7 @@ const handleGroupEvents = async (event: DirectorySyncEvent, organizationId: numb
         newUserEmails.map((email) => {
           return sendSignupToOrganizationEmail({
             usernameOrEmail: email,
-            team: { ...group.team, metadata: teamMetadataSchema.parse(group.team.metadata) },
+            team: group.team,
             translation,
             inviterName: org.name,
             teamId: group.teamId,
@@ -158,17 +165,27 @@ const handleGroupEvents = async (event: DirectorySyncEvent, organizationId: numb
         const translation = await getTranslation(user.locale || "en", "common");
         return sendExistingUserTeamInviteEmails({
           currentUserTeamName: group.team.name,
-          existingUsersWithMembersips: [user],
+          existingUsersWithMemberships: [
+            {
+              ...user,
+              profile: null,
+            },
+          ],
           language: translation,
           isOrg: false,
           teamId: group.teamId,
           isAutoJoin: true,
           currentUserParentTeamName: org.name,
+          orgSlug: null,
         });
       }),
       ...newOrgMembers.map((user) => {
         return createAProfileForAnExistingUser({
-          user,
+          user: {
+            id: user.id,
+            email: user.email,
+            currentUsername: user.username,
+          },
           organizationId,
         });
       }),

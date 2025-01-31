@@ -1,16 +1,14 @@
 import { expect } from "@playwright/test";
 
 import { test } from "./lib/fixtures";
-import { testBothFutureAndLegacyRoutes } from "./lib/future-legacy-routes";
 import { installAppleCalendar } from "./lib/testUtils";
 
 test.describe.configure({ mode: "parallel" });
 
 test.afterEach(({ users }) => users.deleteAll());
 
-testBothFutureAndLegacyRoutes.describe("App Store - Authed", (routeVariant) => {
+test.describe("App Store - Authed", () => {
   test("should render /apps page", async ({ page, users, context }) => {
-    test.skip(routeVariant === "future", "Future route not ready yet");
     const user = await users.create();
 
     await user.apiLogin();
@@ -31,6 +29,19 @@ testBothFutureAndLegacyRoutes.describe("App Store - Authed", (routeVariant) => {
     await installAppleCalendar(page);
 
     await expect(page.locator(`text=Connect to Apple Server`)).toBeVisible();
+  });
+
+  test("Can add Google calendar from the app store", async ({ page, users }) => {
+    const user = await users.create();
+    await user.apiLogin();
+
+    await page.goto("/apps/google-calendar");
+
+    await page.getByTestId("install-app-button").click();
+
+    await page.waitForNavigation();
+
+    await expect(page.url()).toContain("accounts.google.com");
   });
 
   test("Installed Apps - Navigation", async ({ page, users }) => {

@@ -18,6 +18,7 @@ export type HeadSeoProps = {
   app?: AppImageProps;
   meeting?: MeetingImageProps;
   isBrandingHidden?: boolean;
+  origin?: string;
 };
 
 /**
@@ -69,10 +70,11 @@ const buildSeoMeta = (pageProps: {
 
 export const HeadSeo = (props: HeadSeoProps): JSX.Element => {
   const path = usePathname();
+
   // The below code sets the defaultUrl for our canonical tags
   // Get the router's path
   // Set the default URL to either the current URL (if self-hosted) or https://cal.com canonical URL
-  const defaultUrl = buildCanonical({ path, origin: CAL_URL });
+  const defaultUrl = buildCanonical({ path, origin: props.origin || CAL_URL });
 
   const {
     title,
@@ -129,7 +131,7 @@ export const HeadSeo = (props: HeadSeoProps): JSX.Element => {
       ...seoObject.openGraph,
       images: [...(nextSeoProps.openGraph?.images || []), ...seoObject.openGraph.images],
     },
-    additionalMetaTags: [...(nextSeoProps.additionalMetaTags || [])],
+    additionalMetaTags: [...(nextSeoProps.additionalMetaTags || []), ...seoObject.additionalMetaTags],
   };
 
   return <NextSeo {...seoProps} />;

@@ -7,9 +7,15 @@ import { TRPCError } from "@trpc/server";
 
 import type { TSetDestinationCalendarInputSchema } from "./setDestinationCalendar.schema";
 
+type SessionUser = NonNullable<TrpcSessionUser>;
+type User = {
+  id: SessionUser["id"];
+  userLevelSelectedCalendars: SessionUser["userLevelSelectedCalendars"];
+};
+
 type SetDestinationCalendarOptions = {
   ctx: {
-    user: NonNullable<TrpcSessionUser>;
+    user: User;
   };
   input: TSetDestinationCalendarInputSchema;
 };
@@ -19,7 +25,10 @@ export const setDestinationCalendarHandler = async ({ ctx, input }: SetDestinati
   const { integration, externalId, eventTypeId } = input;
   const credentials = await getUsersCredentials(user);
   const calendarCredentials = getCalendarCredentials(credentials);
-  const { connectedCalendars } = await getConnectedCalendars(calendarCredentials, user.selectedCalendars);
+  const { connectedCalendars } = await getConnectedCalendars(
+    calendarCredentials,
+    user.userLevelSelectedCalendars
+  );
   const allCals = connectedCalendars.map((cal) => cal.calendars ?? []).flat();
 
   const credentialId = allCals.find(
